@@ -1,0 +1,16 @@
+{
+  "classes": {
+    "7": {
+      "subjects": ["Hindi", "English", "Math"]
+    }
+  },
+
+  "exam_types": ["PT1", "PT2", "Half Yearly", "Final"],
+
+  "rules": {
+    "PT1": {
+      "total_marks": 20,
+      "pattern": "short + mcq"
+    }
+  }
+}
