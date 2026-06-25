@@ -1,5 +1,8 @@
 import streamlit as st
 import json
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfgen import canvas
+from io import BytesIO
 
 # ---------------- SESSION INIT ----------------
 if "user" not in st.session_state:
@@ -28,30 +31,61 @@ if st.session_state.user is None:
 
 
 # ---------------- DASHBOARD ----------------
+user = st.session_state.user
+
 st.title("GENQAI")
-st.write("Welcome:", st.session_state.user["email"])
+st.write("Welcome:", user["email"])
 
 st.subheader("Question Paper Configuration")
 
-class_selected = st.selectbox(
-    "Select Class",
-    ["Class 7", "Class 8"]
-)
+class_selected = st.selectbox("Select Class", ["Class 7", "Class 8"])
+subject_selected = st.selectbox("Select Subject", ["Maths", "Hindi", "English"])
+type_selected = st.selectbox("Select Exam Type", ["PT-1", "PT-2", "Half Yearly", "Final"])
+units = st.multiselect("Select Units", ["Unit 1", "Unit 2", "Unit 3"])
 
-subject_selected = st.selectbox(
-    "Select Subject",
-    ["Maths", "Hindi", "English"]
-)
 
-type_selected = st.selectbox(
-    "Select Exam Type",
-    ["PT-1", "PT-2", "Half Yearly", "Final"]
-)
+# ---------------- PDF FUNCTION ----------------
+def generate_pdf(class_selected, subject_selected, type_selected, units, selected_questions, total_marks):
+    buffer = BytesIO()
+    pdf = canvas.Canvas(buffer, pagesize=A4)
 
-units = st.multiselect(
-    "Select Units",
-    ["Unit 1", "Unit 2", "Unit 3"]
-)
+    width, height = A4
+    y = height - 50
+
+    pdf.setFont("Helvetica-Bold", 16)
+    pdf.drawString(50, y, "GENQAI QUESTION PAPER")
+
+    y -= 30
+    pdf.setFont("Helvetica", 12)
+    pdf.drawString(50, y, f"Class: {class_selected}")
+    y -= 20
+    pdf.drawString(50, y, f"Subject: {subject_selected}")
+    y -= 20
+    pdf.drawString(50, y, f"Exam Type: {type_selected}")
+    y -= 20
+    pdf.drawString(50, y, f"Units: {', '.join(units)}")
+    y -= 20
+    pdf.drawString(50, y, f"Total Marks: {total_marks}")
+
+    y -= 40
+    pdf.setFont("Helvetica-Bold", 14)
+    pdf.drawString(50, y, "Questions:")
+
+    y -= 30
+    pdf.setFont("Helvetica", 11)
+
+    for i, q in enumerate(selected_questions, start=1):
+        text = f"Q{i}. {q['question']} ({q['marks']} Marks)"
+        pdf.drawString(50, y, text[:90])  # prevent overflow
+        y -= 20
+
+        if y < 50:
+            pdf.showPage()
+            y = height - 50
+
+    pdf.save()
+    buffer.seek(0)
+    return buffer
 
 
 # ---------------- GENERATE PAPER ----------------
@@ -65,38 +99,55 @@ if st.button("Generate Question Paper"):
             with open("data/question_bank.json", "r", encoding="utf-8") as f:
                 question_bank = json.load(f)
 
+            # SAFE DATA LOADING
             selected_questions = []
 
             for unit in units:
-                if (
-                    class_selected in question_bank
-                    and subject_selected in question_bank[class_selected]
-                    and unit in question_bank[class_selected][subject_selected]
-                ):
-                    selected_questions.extend(
-                        question_bank[class_selected][subject_selected][unit]
-                    )
+                selected_questions.extend(
+                    question_bank.get(class_selected, {})
+                                 .get(subject_selected, {})
+                                 .get(unit, [])
+                )
+
+            if not selected_questions:
+                st.warning("No questions found for selected options")
+                st.stop()
+
+            total_marks = sum(q["marks"] for q in selected_questions)
 
             st.success("Question Paper Generated")
 
-            st.write("### Configuration")
-            st.write("Class:", class_selected)
-            st.write("Subject:", subject_selected)
-            st.write("Exam Type:", type_selected)
-            st.write("Units:", ", ".join(units))
+            st.markdown("---")
+            st.subheader(f"{class_selected} - {subject_selected}")
+            st.write(f"Exam: {type_selected}")
+            st.write(f"Units: {', '.join(units)}")
+            st.write(f"Total Marks: {total_marks}")
+            st.markdown("---")
 
             st.write("### Questions")
 
-            if selected_questions:
-                for i, question in enumerate(selected_questions, start=1):
-                    st.write(f"{i}. {question}")
-            else:
-                st.warning("No questions found for the selected criteria.")
+            for i, q in enumerate(selected_questions, start=1):
+                st.write(f"Q{i}. {q['question']} ({q['marks']} Marks)")
+
+            # ---------------- PDF GENERATION ----------------
+            pdf_buffer = generate_pdf(
+                class_selected,
+                subject_selected,
+                type_selected,
+                units,
+                selected_questions,
+                total_marks
+            )
+
+            st.download_button(
+                label="📄 Download Question Paper PDF",
+                data=pdf_buffer,
+                file_name="GenQAI_Question_Paper.pdf",
+                mime="application/pdf"
+            )
 
         except FileNotFoundError:
-            st.error(
-                "question_bank.json not found. Please create data/question_bank.json"
-            )
+            st.error("question_bank.json not found in /data folder")
 
         except json.JSONDecodeError:
             st.error("Invalid JSON format in question_bank.json")
@@ -108,7 +159,9 @@ if st.button("Generate Question Paper"):
 # ---------------- SIDEBAR ----------------
 with st.sidebar:
     st.write("Logged in as:")
-    st.write(st.session_state.user["email"])
+
+    if st.session_state.user:
+        st.write(user["email"])
 
     if st.button("Logout"):
         st.session_state.user = None
