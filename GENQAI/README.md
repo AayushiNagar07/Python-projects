@@ -1,6 +1,3 @@
-Here’s a **professional GitHub README** you can directly copy-paste for your GenQAI project. It is structured like an internship-ready project (clean, formal, and impressive).
-
----
 
 # 📌 GENQAI — AI Question Paper Generator
 
